@@ -1,0 +1,8 @@
+# Hostnames for the local TLS certificate, one per line.
+# regen-certs.sh copies this file to hosts.txt (git-ignored) if it doesn't exist; edit hosts.txt,
+# then run ./regen-certs.sh.
+localhost
+*.localhost
+127.0.0.1
+::1
+traefik.test
