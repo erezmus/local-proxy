@@ -1,0 +1,21 @@
+#!/bin/sh
+# Install and usage instructions: docs/checks.md
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+
+for command in shellcheck docker gitleaks; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Required command not found: $command" >&2
+    exit 1
+  fi
+done
+
+# Validate the staged files, not potentially different working-tree versions.
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/local-proxy-checks.XXXXXX")
+trap 'rm -rf "$tmp"' 0
+git checkout-index --prefix="$tmp/" -- regen-certs.sh docker-compose.yml
+
+shellcheck "$tmp/regen-certs.sh"
+docker compose -f "$tmp/docker-compose.yml" config --quiet
+gitleaks git --pre-commit --redact
