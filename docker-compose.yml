@@ -4,6 +4,11 @@ services:
     image: traefik:v3.7@sha256:1336e85aaed293bd63d005086e0dd013b04078b26aaeb1c18b26a2f928af7e65
     container_name: traefik
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     security_opt:
       - no-new-privileges:true
     # Static config lives here rather than in a traefik.yml so ${PROXY_NETWORK} can be interpolated;
