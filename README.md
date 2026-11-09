@@ -202,3 +202,7 @@ Traefik logs at `INFO` level, and access logging (one line per request) is on. B
 ## Dashboard
 
 The dashboard is at <https://traefik.test/> on this machine only (see [Security](#security)). Traefik routes to its own dashboard: the labels on the `traefik` service point a router at the built-in `api@internal` service. The JSON API is under the same host, e.g. <https://traefik.test/api/http/routers>.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See [`LICENSE.md`](LICENSE.md) for the full text.
