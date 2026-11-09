@@ -1,6 +1,7 @@
 services:
   traefik:
-    # Pinned by digest so a re-pushed tag can't change the image. Update the digest deliberately.
+    # Pinned by digest so a re-pushed tag can't change the image.
+    # See docs/traefik-updates.md for automated update PRs.
     image: traefik:v3.7@sha256:1336e85aaed293bd63d005086e0dd013b04078b26aaeb1c18b26a2f928af7e65
     container_name: traefik
     restart: unless-stopped
