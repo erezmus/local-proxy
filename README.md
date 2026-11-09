@@ -45,6 +45,22 @@ If you set `PROXY_NETWORK` only in `.env`, the shell can't see it, so type the n
 
 To change the network name later, set `PROXY_NETWORK` as above, create the new network, and rerun `docker compose up -d`. Projects using the proxy must also be recreated so they join the new network.
 
+## Binding to a LAN address
+
+By default the published ports (80 and 443) bind to `127.0.0.1`, so only this machine can reach the proxy. To reach it from another device, such as a NAS or a shared dev box, set the address to bind to in `.env` here:
+
+```sh
+PROXY_BIND=192.168.1.20   # this machine's LAN IP
+```
+
+Then rerun `docker compose up -d`. Compose reads `PROXY_BIND` from `.env` and uses it in the port mappings.
+
+Before you do this:
+
+- The dashboard has no authentication. Add basic auth first (see [Security](#security)).
+- Other devices need DNS that points your `*.test` or other hostnames at `PROXY_BIND`. The dnsmasq setup in [DNS for `*.test`](#dns-for-test) only runs on this machine.
+- Other devices need the mkcert root CA installed to trust the certificate.
+
 ## Routing a project through the proxy
 
 Containers are **not** routed by default (`exposedByDefault: false`). For each service you want routed:
@@ -166,7 +182,7 @@ dscacheutil -q host -a name anything.test          # should return 127.0.0.1
 This setup is for a single developer machine. Read these notes before changing the defaults.
 
 - **Docker socket access is effectively root on the host.** Traefik reads container metadata through `/var/run/docker.sock`. The `:ro` flag on that mount does not limit what the Docker API allows. Anything that controls Traefik can start a privileged container with the host filesystem mounted, which gives root on the host. `no-new-privileges` does not prevent this. Members of the `docker` group already have the same access, so this only adds risk if Traefik itself is compromised or misconfigured. To reduce it, put a read-only socket proxy such as [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy) between Traefik and the socket, allowing only the container, network, service, and task endpoints. This repo does not do that yet.
-- **The dashboard has no authentication.** Anyone on this machine who can reach `127.0.0.1:443` with `Host: traefik.test` can read every router, service, and middleware. The ports are bound to loopback, so other machines on your network cannot reach the dashboard or any routed app. If you change the bindings to expose the proxy to other machines, add a `basicauth` middleware to the dashboard router first.
+- **The dashboard has no authentication.** Anyone who can reach the proxy's ports with `Host: traefik.test` can read every router, service, and middleware. By default `PROXY_BIND` is `127.0.0.1`, so other machines on your network cannot reach the dashboard or any routed app. Setting `PROXY_BIND` to a LAN address exposes both to that network. Add [HTTP basic auth](https://doc.traefik.io/traefik/middlewares/http/basicauth/) to the dashboard router first, and do not expose the proxy on an untrusted network.
 - **The mkcert root CA can sign for any name.** The root key is in the directory printed by `mkcert -CAROOT` (`rootCA-key.pem`). Anyone who has that file can make certificates your browser trusts for any site. Keep it private, and run `mkcert -uninstall` if you stop using this setup.
 - **The leaf key is private to your user.** `regen-certs.sh` writes `certs/local-key.pem` with mode `600`. Do not copy it to other machines or commit it. It is git-ignored.
 - **The Traefik image is pinned by digest** in `docker-compose.yml`. To upgrade, pick a new version, look up its digest, and update the line.

@@ -22,10 +22,11 @@ services:
       - --providers.docker.network=${PROXY_NETWORK:-local-proxy}
       - --providers.file.filename=/etc/traefik/dynamic.yml
       - --providers.file.watch=true
-    # Bound to loopback so the proxy and dashboard are not reachable from other machines on the network.
+    # Bound to loopback by default so the proxy and dashboard are not reachable from other machines.
+    # Set PROXY_BIND to a LAN IP to expose them. The dashboard has no authentication; read the README Security section first.
     ports:
-      - "127.0.0.1:80:80"
-      - "127.0.0.1:443:443"
+      - "${PROXY_BIND:-127.0.0.1}:80:80"
+      - "${PROXY_BIND:-127.0.0.1}:443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
