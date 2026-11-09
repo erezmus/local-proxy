@@ -1,0 +1,15 @@
+{
+  "test_image": "agent-python",
+  "context_paths": [
+    "docker-compose.yml",
+    "dynamic.yml",
+    "docs/",
+    "README.md",
+    "regen-certs.sh"
+  ],
+  "test_command": "pip install -q pyyaml && python3 -c \"import sys, yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]\" docker-compose.yml dynamic.yml && bash -n regen-certs.sh",
+  "custom_instructions": "A shared reverse proxy for local development",
+  "commit_style": {
+    "style": "conventional"
+  }
+}
