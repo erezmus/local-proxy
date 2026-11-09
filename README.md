@@ -32,7 +32,7 @@ Traefik's static config is passed as command-line flags in `docker-compose.yml` 
 
 ## Setup
 
-Prerequisites: Docker with the Compose plugin, `mkcert`, and dnsmasq for `*.test` hostnames (see [DNS for `*.test`](#dns-for-test)).
+Prerequisites: Docker with the Compose plugin, `mkcert`, OpenSSL, and dnsmasq for `*.test` hostnames (see [DNS for `*.test`](#dns-for-test)).
 
 ```sh
 mkcert -install                                         # one-time: trust the mkcert CA in your system and browsers
@@ -145,6 +145,14 @@ Notes:
 - Wildcards only cover one level: `*.localhost` matches `app.localhost` but not `api.app.localhost`.
 - Some browsers reject `*.localhost`. If one does, list the exact hostname instead.
 - Certificates expire after about 27 months. Rerun the script to renew.
+
+To check the current certificate without regenerating it or restarting Traefik, run:
+
+```sh
+./regen-certs.sh --check
+```
+
+The script prints the expiry date and warns if fewer than 30 days remain or the certificate has expired. It also checks after regeneration. The warning does not change the exit status; missing or unreadable certificates cause an error. Checks are not automatic, so run the command periodically.
 
 ## DNS for `*.test`
 
