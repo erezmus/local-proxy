@@ -61,6 +61,10 @@ Before you do this:
 - Other devices need DNS that points your `*.test` or other hostnames at `PROXY_BIND`. The dnsmasq setup in [DNS for `*.test`](#dns-for-test) only runs on this machine.
 - Other devices need the mkcert root CA installed to trust the certificate.
 
+## Synology NAS
+
+To run the proxy on a Synology NAS, see [docs/synology.md](docs/synology.md). It covers port conflicts, certificates, and DNS on DSM.
+
 ## Routing a project through the proxy
 
 Containers are **not** routed by default (`exposedByDefault: false`). For each service you want routed:
