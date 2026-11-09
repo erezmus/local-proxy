@@ -10,6 +10,7 @@ services:
     # Traefik ignores flags and env vars when a config file is present.
     command:
       - --api.dashboard=true
+      - --ping=true
       - --log.level=INFO
       - --accesslog=true
       - --entrypoints.web.address=:80
@@ -22,8 +23,15 @@ services:
       - --providers.docker.network=${PROXY_NETWORK:-local-proxy}
       - --providers.file.filename=/etc/traefik/dynamic.yml
       - --providers.file.watch=true
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     # Bound to loopback by default so the proxy and dashboard are not reachable from other machines.
     # Set PROXY_BIND to a LAN IP to expose them. The dashboard has no authentication; read the README Security section first.
+    # The default ping entrypoint is not published.
     ports:
       - "${PROXY_BIND:-127.0.0.1}:80:80"
       - "${PROXY_BIND:-127.0.0.1}:443:443"
