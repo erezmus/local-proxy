@@ -4,5 +4,6 @@ certs/
 hosts.txt
 
 .env
+.envrc
 *.log
 .DS_Store
