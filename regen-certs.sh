@@ -43,11 +43,28 @@ fi
 hosts=()
 while IFS= read -r line || [ -n "$line" ]; do
   line="${line%%#*}"
-  line="$(echo "$line" | xargs)"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
   [ -n "$line" ] && hosts+=("$line")
 done < hosts.txt
 
 [ ${#hosts[@]} -gt 0 ] || { echo "no hostnames in hosts.txt" >&2; exit 1; }
+
+if [ -d certs ]; then
+  (
+    # Keep backups inside the ignored certs directory and protect their private keys.
+    umask 077
+    mkdir -p certs/backups
+    backup_dir="$(mktemp -d certs/backups/backup.XXXXXXXX)"
+    for path in certs/* certs/.[!.]* certs/..?*; do
+      [ -e "$path" ] || [ -L "$path" ] || continue
+      # Do not recursively copy earlier backups.
+      [ "$path" = certs/backups ] && continue
+      cp -pR "$path" "$backup_dir/"
+    done
+    echo "Backed up certs/ to $backup_dir"
+  )
+fi
 
 mkdir -p certs
 mkcert \
