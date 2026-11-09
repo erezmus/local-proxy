@@ -45,6 +45,38 @@ If you set `PROXY_NETWORK` only in `.env`, the shell can't see it, so type the n
 
 To change the network name later, set `PROXY_NETWORK` as above, create the new network, and rerun `docker compose up -d`. Projects using the proxy must also be recreated so they join the new network.
 
+## Automated checks
+
+Install the following tools:
+
+- **ShellCheck:** `brew install shellcheck` on macOS or `sudo apt install shellcheck` on Debian/Ubuntu. See the [ShellCheck installation guide](https://github.com/koalaman/shellcheck#installing) for other platforms.
+- **Docker Compose plugin:** install [Docker Desktop](https://docs.docker.com/desktop/) or follow the [Compose plugin installation guide](https://docs.docker.com/compose/install/linux/) for Linux.
+- **Gitleaks:** `brew install gitleaks` on macOS, or follow the [Gitleaks installation guide](https://github.com/gitleaks/gitleaks#installing). These commands require a version supporting the `git` subcommand.
+
+From the repository root, run each check independently:
+
+```sh
+shellcheck regen-certs.sh
+docker compose config --quiet
+gitleaks git --redact --log-opts=--all
+```
+
+Each command exits non-zero on failure. Compose validates the configuration using the current environment and `.env`; it does not start containers. Gitleaks scans committed history reachable from local refs. To scan staged changes as well, run:
+
+```sh
+gitleaks git --pre-commit --redact
+```
+
+Confirm `.env` is untracked and ignored with `git check-ignore -v .env`; the command prints the applicable ignore rule and fails if the file is tracked or not ignored. Never commit local secrets.
+
+To run these checks automatically before each commit, enable the included hook once per clone from the repository root:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+This makes Git read hooks from the tracked `.githooks/` directory instead of `.git/hooks`, so any existing hook in `.git/hooks` stops running; move its commands into `.githooks/pre-commit` if you use one. The hook checks that `.env` is ignored, runs ShellCheck and Compose, and scans staged changes with gitleaks, blocking the commit on failure. ShellCheck and Compose inspect the working-tree files, so keep those files consistent with what you stage. Committed history is not scanned by the hook; run the full-history gitleaks command above manually or in CI. Enable the hook separately in each clone.
+
 ## Binding to a LAN address
 
 By default the published ports (80 and 443) bind to `127.0.0.1`, so only this machine can reach the proxy. To reach it from another device, such as a NAS or a shared dev box, set the address to bind to in `.env` here:
@@ -166,7 +198,7 @@ address=/test/127.0.0.1
 listen-address=127.0.0.1
 EOF
 
-sudo brew services start dnsmasq   # sudo: dnsmasq needs port 53
+sudo brew services start dnsq   # sudo: dnsmasq needs port 53
 
 sudo mkdir -p /etc/resolver
 echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/test
