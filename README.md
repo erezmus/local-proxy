@@ -6,7 +6,7 @@ A shared [Traefik](https://doc.traefik.io/traefik/) reverse proxy for local deve
 
 | File                 | Purpose                                                                      |
 | -------------------- | ---------------------------------------------------------------------------- |
-| `docker-compose.yml` | The Traefik container and its static config (as command-line flags)          |
+| `docker-compose.yml` | Traefik, its static config (as flags), and the read-only Docker socket proxy |
 | `.env.example`       | Settings you can override by copying to `.env` (git-ignored)                 |
 | `dynamic.yml`        | Dynamic config: TLS certificates                                             |
 | `hosts.example.txt`  | Default hostnames; copied to `hosts.txt` on first run                        |
@@ -225,11 +225,11 @@ dscacheutil -q host -a name anything.test          # should return 127.0.0.1
 
 This setup is for a single developer machine. Read these notes before changing the defaults.
 
-- **Docker socket access is effectively root on the host.** Traefik reads container metadata through `/var/run/docker.sock`. The `:ro` flag on that mount does not limit what the Docker API allows. Anything that controls Traefik can start a privileged container with the host filesystem mounted, which gives root on the host. `no-new-privileges` does not prevent this. Members of the `docker` group already have the same access, so this only adds risk if Traefik itself is compromised or misconfigured. To reduce it, put a read-only socket proxy such as [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy) between Traefik and the socket, allowing only the container, network, service, and task endpoints. This repo does not do that yet.
+- **Traefik reaches Docker only through a read-only socket proxy.** Full access to `/var/run/docker.sock` is effectively root on the host: the `:ro` flag on the mount does not limit what the Docker API allows, and `no-new-privileges` does not prevent a caller from starting a privileged container with the host filesystem mounted. So Traefik does not mount the socket. A [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy) container (`socket-proxy` in `docker-compose.yml`) mounts it instead and allows only the read endpoints Traefik's Docker provider needs: containers, networks, services, tasks, events, version, and ping. All `POST` and `DELETE` requests, including container creation, and every other endpoint, such as images, volumes, and exec, are rejected with `403`. The proxy listens only on an internal `socket-proxy` network shared with Traefik, not on the shared proxy network, so routed projects cannot reach it. The proxy container itself still has full socket access, so keep its configuration minimal. Members of the `docker` group already have full access regardless.
 - **The dashboard has no authentication.** Anyone who can reach the proxy's ports with `Host: traefik.test` can read every router, service, and middleware. By default `PROXY_BIND` is `127.0.0.1`, so other machines on your network cannot reach the dashboard or any routed app. Setting `PROXY_BIND` to a LAN address exposes both to that network. Add [HTTP basic auth](https://doc.traefik.io/traefik/middlewares/http/basicauth/) to the dashboard router first, and do not expose the proxy on an untrusted network.
 - **The mkcert root CA can sign for any name.** The root key is in the directory printed by `mkcert -CAROOT` (`rootCA-key.pem`). Anyone who has that file can make certificates your browser trusts for any site. Keep it private, and run `mkcert -uninstall` if you stop using this setup.
 - **The leaf key is private to your user.** `regen-certs.sh` writes `certs/local-key.pem` with mode `600`. Do not copy it to other machines or commit it. It is git-ignored.
-- **The Traefik image is pinned by digest** in `docker-compose.yml`. To upgrade, pick a new version, look up its digest, and update the line.
+- **The Traefik and socket proxy images are pinned by digest** in `docker-compose.yml`. To upgrade, pick a new version, look up its digest, and update the line.
 
 ## Logs
 
