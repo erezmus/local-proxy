@@ -1,4 +1,30 @@
 services:
+  # Read-only Docker API proxy. Only it mounts the Docker socket; Traefik talks to it over the
+  # internal socket-proxy network. Endpoints are denied unless enabled below, and POST is off,
+  # so requests that create, start, or modify containers are rejected with 403.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+    container_name: traefik-socket-proxy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Endpoints Traefik's Docker provider reads. EVENTS, PING, and VERSION are on by default.
+      CONTAINERS: 1
+      NETWORKS: 1
+      SERVICES: 1
+      TASKS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - socket-proxy
+
   traefik:
     # Pinned by digest so a re-pushed tag can't change the image.
     # See docs/traefik-updates.md for automated update PRs.
@@ -24,7 +50,7 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
       - --entrypoints.websecure.http.tls=true
-      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=${PROXY_NETWORK:-local-proxy}
       - --providers.file.filename=/etc/traefik/dynamic.yml
@@ -42,11 +68,13 @@ services:
       - "${PROXY_BIND:-127.0.0.1}:80:80"
       - "${PROXY_BIND:-127.0.0.1}:443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
       - ./certs:/certs:ro
+    depends_on:
+      - socket-proxy
     networks:
       - proxy
+      - socket-proxy
     labels:
       - traefik.enable=true
       - traefik.http.routers.dashboard.rule=Host(`traefik.test`)
@@ -56,3 +84,7 @@ networks:
   proxy:
     name: ${PROXY_NETWORK:-local-proxy}
     external: true
+  # Internal network shared only by Traefik and the socket proxy. Keep the socket proxy off the
+  # shared proxy network: every routed project joins that one and could otherwise reach the API.
+  socket-proxy:
+    internal: true
