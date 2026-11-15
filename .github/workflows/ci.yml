@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  MKCERT_VERSION: 1.4.4
+  MKCERT_SHA256: 6d31c65b03972c6dc4a14ab429f2928300518b26503f58723e532d1b0a3bbb52
+  WHOAMI_IMAGE: traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
+  CURL_IMAGE: curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40
+
+jobs:
+  checks:
+    name: Static checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so gitleaks scans every commit.
+          fetch-depth: 0
+
+      - name: ShellCheck
+        run: shellcheck regen-certs.sh .githooks/pre-commit
+
+      - name: Validate Compose file
+        run: docker compose config --quiet
+
+      - name: Check .env is untracked and ignored
+        run: git check-ignore -q .env
+
+      - name: Install gitleaks
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          sudo install "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+
+      - name: Scan history for secrets
+        run: gitleaks git --redact --log-opts=--all
+
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install mkcert
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/mkcert" \
+            "https://github.com/FiloSottile/mkcert/releases/download/v${MKCERT_VERSION}/mkcert-v${MKCERT_VERSION}-linux-amd64"
+          echo "$MKCERT_SHA256  $RUNNER_TEMP/mkcert" | sha256sum -c -
+          sudo install "$RUNNER_TEMP/mkcert" /usr/local/bin/mkcert
+
+      - name: Configure environment
+        # The runner user is not UID 1000; Traefik must run as the owner of the mode-600 key.
+        run: |
+          {
+            echo "PROXY_UID=$(id -u)"
+            echo "PROXY_GID=$(id -g)"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate certificates
+        # Exercises regen-certs.sh. mkcert creates a throwaway CA in CAROOT; it is not installed
+        # in the system trust store, so curl is given the CA file explicitly below.
+        run: |
+          cp hosts.example.txt hosts.txt
+          echo whoami.test >> hosts.txt
+          ./regen-certs.sh
+          ./regen-certs.sh --check
+          echo "CA_FILE=$(mkcert -CAROOT)/rootCA.pem" >> "$GITHUB_ENV"
+
+      - name: Start the proxy
+        run: |
+          docker network create local-proxy
+          docker compose up -d --wait --wait-timeout 60
+
+      - name: Start a routed test service
+        run: |
+          docker run -d --name whoami --network local-proxy \
+            --label traefik.enable=true \
+            --label 'traefik.http.routers.whoami.rule=Host(`whoami.test`)' \
+            "$WHOAMI_IMAGE"
+
+      - name: HTTPS reaches the routed service with a trusted certificate
+        run: |
+          curl -fsS --cacert "$CA_FILE" \
+            --retry 15 --retry-delay 1 --retry-all-errors \
+            --resolve whoami.test:443:127.0.0.1 \
+            https://whoami.test/ | tee "$RUNNER_TEMP/whoami.txt"
+          grep -q '^Hostname: ' "$RUNNER_TEMP/whoami.txt"
+
+      - name: HTTP redirects to HTTPS
+        run: |
+          read -r code location < <(curl -sS -o /dev/null \
+            -w '%{http_code} %{redirect_url}\n' \
+            --resolve whoami.test:80:127.0.0.1 http://whoami.test/)
+          echo "status=$code location=$location"
+          [[ "$code" == 3* && "$location" == "https://whoami.test/" ]]
+
+      - name: Dashboard API lists the test router
+        run: |
+          curl -fsS --cacert "$CA_FILE" \
+            --resolve traefik.test:443:127.0.0.1 \
+            https://traefik.test/api/http/routers | grep -q '"whoami@docker"'
+
+      - name: Socket proxy rejects write requests
+        # Regression test for the read-only Docker API proxy: POST must be refused.
+        run: |
+          network=$(docker network ls -q --filter label=com.docker.compose.network=socket-proxy)
+          code=$(docker run --rm --network "$network" "$CURL_IMAGE" \
+            -s -o /dev/null -w '%{http_code}' -X POST http://socket-proxy:2375/containers/create)
+          echo "status=$code"
+          [ "$code" = 403 ]
+
+      - name: Show logs
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs
+          docker logs whoami || true

@@ -13,5 +13,5 @@ git check-ignore -q .env || {
   exit 1
 }
 
-# Scan staged changes only. Full-history scans are run manually or in CI.
+# Scan staged changes only. Full-history scans run in CI (.github/workflows/ci.yml).
 gitleaks git --pre-commit --redact
