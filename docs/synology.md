@@ -116,8 +116,11 @@ Replace `USER` and the address as needed. On the NAS, restrict the private key:
 chmod 600 /volume1/docker/local-proxy/certs/local-key.pem
 ```
 
-Ensure the container can read both files and that NAS users who do not need
-the key cannot read the directory. The leaf key must be copied to the NAS for
+Traefik runs as `PROXY_UID:PROXY_GID` (default `1000:1000`), not root, and has no
+capability to bypass file permissions. Either `chown` both files and the `certs`
+directory to that UID and GID, or set `PROXY_UID` and `PROXY_GID` in `.env` to
+the owner of the files (`id -u` / `id -g` for the SSH account; DSM users usually
+start at `1026`). Ensure NAS users who do not need the key cannot read the directory. The leaf key must be copied to the NAS for
 Traefik to serve HTTPS; do not commit it or distribute it to clients.
 
 `regen-certs.sh` uses the host's `docker compose` CLI to check and restart
