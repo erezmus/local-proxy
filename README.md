@@ -114,7 +114,7 @@ services:
     # ...
     labels:
       - traefik.enable=true
-      - traefik.http.routers.myapp-api.rule=Host(`api.myapp.localhost`)
+      - traefik.http.routers.myapp-api.rule=Host(`myapp.localhost`)
       # only needed if the container exposes more than one port:
       - traefik.http.services.myapp-api.loadbalancer.server.port=8080
     networks:
