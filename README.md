@@ -75,7 +75,11 @@ To run these checks automatically before each commit, enable the included hook o
 git config core.hooksPath .githooks
 ```
 
-This makes Git read hooks from the tracked `.githooks/` directory instead of `.git/hooks`, so any existing hook in `.git/hooks` stops running; move its commands into `.githooks/pre-commit` if you use one. The hook checks that `.env` is ignored, runs ShellCheck and Compose, and scans staged changes with gitleaks, blocking the commit on failure. ShellCheck and Compose inspect the working-tree files, so keep those files consistent with what you stage. Committed history is not scanned by the hook; run the full-history gitleaks command above manually or in CI. Enable the hook separately in each clone.
+This makes Git read hooks from the tracked `.githooks/` directory instead of `.git/hooks`, so any existing hook in `.git/hooks` stops running; move its commands into `.githooks/pre-commit` if you use one. The hook checks that `.env` is ignored, runs ShellCheck and Compose, and scans staged changes with gitleaks, blocking the commit on failure. ShellCheck and Compose inspect the working-tree files, so keep those files consistent with what you stage. Committed history is not scanned by the hook; run the full-history gitleaks command above manually; CI runs it on every push. Enable the hook separately in each clone.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on pushes to `main` and on pull requests. The static checks job runs ShellCheck, `docker compose config`, the `.env` ignore check, and a full-history gitleaks scan. The smoke test job generates certificates with `regen-certs.sh`, starts the proxy, routes a `traefik/whoami` container through it, and checks that HTTPS works with the mkcert CA, HTTP redirects to HTTPS, the dashboard API lists the router, and the socket proxy rejects `POST` requests. The gitleaks and mkcert versions are pinned with checksums in the workflow's `env` block; update them by hand.
 
 ## Binding to a LAN address
 

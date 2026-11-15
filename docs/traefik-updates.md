@@ -8,8 +8,11 @@ merged; review and test them before merging.
 ## Enable Renovate
 
 The configuration lives in `renovate.json` at the repository root, where
-Renovate discovers it automatically. It enables only the Docker Compose
-manager.
+Renovate discovers it automatically. It enables the Docker Compose manager
+and the GitHub Actions manager, which keeps the SHA-pinned actions in
+`.github/workflows/` up to date. Every Renovate pull request runs the CI
+workflow, including a smoke test that starts the proxy and routes a request
+through it.
 
 A repository administrator must enable Renovate for this repository:
 
