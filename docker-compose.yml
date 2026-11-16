@@ -54,6 +54,8 @@ services:
     # Static config lives here rather than in a traefik.yml so ${PROXY_NETWORK} can be interpolated;
     # Traefik ignores flags and env vars when a config file is present.
     command:
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
       - --api.dashboard=true
       - --ping=true
       - --log.level=INFO
