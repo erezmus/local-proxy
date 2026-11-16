@@ -11,6 +11,7 @@ A shared [Traefik](https://doc.traefik.io/traefik/) reverse proxy for local deve
 | `dynamic.yml`        | Dynamic config: TLS certificates                                             |
 | `hosts.example.txt`  | Default hostnames; copied to `hosts.txt` on first run                        |
 | `hosts.txt`          | Hostnames the certificate covers, one per line (git-ignored)                 |
+| `docs/setup.sh`      | Creates missing setup resources and starts the proxy                         |
 | `regen-certs.sh`     | Regenerates `certs/` from `hosts.txt` and restarts Traefik                   |
 | `certs/`             | Generated certificate and key (mounted read-only at `/certs`)                |
 
@@ -34,16 +35,17 @@ Traefik's static config is passed as command-line flags in `docker-compose.yml` 
 
 Prerequisites: Docker with the Compose plugin, `mkcert`, OpenSSL, and dnsmasq for `*.test` hostnames (see [DNS for `*.test`](#dns-for-test)).
 
+From the repository root, run:
+
 ```sh
-mkcert -install                                         # one-time: trust the mkcert CA in your system and browsers
-docker network create "${PROXY_NETWORK:-local-proxy}"   # one-time: the shared network
-./regen-certs.sh                                        # create hosts.txt from hosts.example.txt, then generate certs/
-docker compose up -d
+bash docs/setup.sh
 ```
 
-If you set `PROXY_NETWORK` only in `.env`, the shell can't see it, so type the name into `docker network create` yourself.
+The script uses Compose to resolve `PROXY_NETWORK` from the shell or `.env`, defaulting to `local-proxy`. It creates the network if needed, installs the mkcert CA and generates certificates if `certs/` is missing, then starts the proxy with `docker compose up -d`. It can be run again without recreating the network or certificates.
 
-To change the network name later, set `PROXY_NETWORK` as above, create the new network, and rerun `docker compose up -d`. Projects using the proxy must also be recreated so they join the new network.
+If `certs/` already exists, the script leaves it untouched and does not install the CA. Run `mkcert -install` separately if this machine still needs to trust the CA. If the directory is incomplete, run `./regen-certs.sh` to generate the certificate and key. To change hostnames or renew certificates, follow [Hostnames and certificates](#hostnames-and-certificates).
+
+To change the network name later, set `PROXY_NETWORK` as above and rerun `bash docs/setup.sh`. Projects using the proxy must also be recreated so they join the new network.
 
 ## Automated checks
 
@@ -56,7 +58,7 @@ Install the following tools:
 From the repository root, run each check independently:
 
 ```sh
-shellcheck regen-certs.sh
+shellcheck regen-certs.sh docs/setup.sh
 docker compose config --quiet
 gitleaks git --redact --log-opts=--all
 ```
@@ -75,11 +77,11 @@ To run these checks automatically before each commit, enable the included hook o
 git config core.hooksPath .githooks
 ```
 
-This makes Git read hooks from the tracked `.githooks/` directory instead of `.git/hooks`, so any existing hook in `.git/hooks` stops running; move its commands into `.githooks/pre-commit` if you use one. The hook checks that `.env` is ignored, runs ShellCheck and Compose, and scans staged changes with gitleaks, blocking the commit on failure. ShellCheck and Compose inspect the working-tree files, so keep those files consistent with what you stage. Committed history is not scanned by the hook; run the full-history gitleaks command above manually; CI runs it on every push. Enable the hook separately in each clone.
+This makes Git read hooks from the tracked `.githooks/` directory instead of `.git/hooks`, so any existing hook in `.git/hooks` stops running; move its commands into `.githooks/pre-commit` if you use one. The hook checks that `.env` is ignored, runs ShellCheck on `regen-certs.sh` and runs Compose, and scans staged changes with gitleaks, blocking the commit on failure. Run the ShellCheck command above separately for `docs/setup.sh`. ShellCheck and Compose inspect the working-tree files, so keep those files consistent with what you stage. Committed history is not scanned by the hook; run the full-history gitleaks command above manually; CI runs it on every push. Enable the hook separately in each clone.
 
 ### Continuous integration
 
-`.github/workflows/ci.yml` runs on pushes to `main` and on pull requests. The static checks job runs ShellCheck, `docker compose config`, the `.env` ignore check, and a full-history gitleaks scan. The smoke test job generates certificates with `regen-certs.sh`, starts the proxy, routes a `traefik/whoami` container through it, and checks that HTTPS works with the mkcert CA, HTTP redirects to HTTPS, the dashboard API lists the router, and the socket proxy rejects `POST` requests. The gitleaks and mkcert versions are pinned with checksums in the workflow's `env` block; update them by hand.
+`.github/workflows/ci.yml` runs on pushes to `main` and on pull requests. The static checks job runs ShellCheck on `regen-certs.sh`, `docker compose config`, the `.env` ignore check, and a full-history gitleaks scan. The smoke test job generates certificates with `regen-certs.sh`, starts the proxy, routes a `traefik/whoami` container through it, and checks that HTTPS works with the mkcert CA, HTTP redirects to HTTPS, the dashboard API lists the router, and the socket proxy rejects `POST` requests. The gitleaks and mkcert versions are pinned with checksums in the workflow's `env` block; update them by hand.
 
 ## Binding to a LAN address
 
