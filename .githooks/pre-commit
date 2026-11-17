@@ -4,7 +4,7 @@ set -eu
 
 cd "$(git rev-parse --show-toplevel)"
 
-shellcheck regen-certs.sh
+shellcheck regen-certs.sh bin/local-proxy
 docker compose config --quiet
 
 # Fail if .env is tracked or is not ignored.

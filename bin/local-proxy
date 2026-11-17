@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Start, stop, and manage the local Traefik proxy from any directory.
+# Install by symlinking into a directory on PATH: local-proxy install [DIR]
+set -euo pipefail
+
+# Resolve symlinks by hand; `readlink -f` is missing on macOS before 12.3.
+self="$0"
+while [ -L "$self" ]; do
+  target="$(readlink "$self")"
+  case "$target" in
+    /*) self="$target" ;;
+    *) self="$(dirname "$self")/$target" ;;
+  esac
+done
+bin_dir="$(cd "$(dirname "$self")" && pwd -P)"
+repo="$(dirname "$bin_dir")"
+self="$bin_dir/$(basename "$self")"
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") <command> [args]
+
+Commands:
+  start           Create the network and certificates if missing, then start the proxy
+  stop            Stop and remove the proxy containers
+  restart         Stop, then start
+  status          Show container status
+  logs [args]     Show Traefik logs (extra args go to docker compose logs, e.g. -f)
+  certs [--check] Regenerate certificates, or check their expiry
+  hosts           Edit hosts.txt in \$EDITOR (default: nano), then regenerate certificates
+  install [DIR]   Symlink this script into DIR (default: ~/.local/bin)
+  help            Show this help
+
+Repository: $repo
+EOF
+}
+
+compose() {
+  docker compose --project-directory "$repo" "$@"
+}
+
+# Create the network and certificates if missing, then start the proxy. Safe to rerun.
+cmd_start() {
+  # Let Compose read .env and apply its own environment precedence and interpolation.
+  local network
+  network="$(compose config --environment | sed -n 's/^PROXY_NETWORK=//p')"
+  network="${network:-local-proxy}"
+
+  if ! docker network inspect "$network" >/dev/null 2>&1; then
+    docker network create "$network"
+  fi
+
+  if [ ! -d "$repo/certs" ]; then
+    mkcert -install
+    "$repo/regen-certs.sh"
+  elif [ ! -f "$repo/certs/local-cert.pem" ] || [ ! -f "$repo/certs/local-key.pem" ]; then
+    echo "certs/ is incomplete; run local-proxy certs to generate the certificate and key" >&2
+    exit 1
+  fi
+
+  compose up -d
+}
+
+cmd_install() {
+  local dir="${1:-$HOME/.local/bin}"
+  local link="$dir/local-proxy"
+  mkdir -p "$dir"
+  if [ -e "$link" ] && [ ! -L "$link" ]; then
+    echo "$link exists and is not a symlink; remove it first" >&2
+    exit 1
+  fi
+  ln -sfn "$self" "$link"
+  echo "Linked $link -> $self"
+  case ":$PATH:" in
+    *":$dir:"*) ;;
+    *) echo "Note: $dir is not on PATH; add it in your shell profile" >&2 ;;
+  esac
+}
+
+command="${1:-help}"
+[ "$#" -gt 0 ] && shift
+
+case "$command" in
+  start | up) cmd_start ;;
+  stop | down) compose down ;;
+  restart) compose down && cmd_start ;;
+  status | ps) compose ps ;;
+  logs) compose logs "$@" traefik ;;
+  certs) "$repo/regen-certs.sh" "$@" ;;
+  hosts)
+    [ -f "$repo/hosts.txt" ] || cp "$repo/hosts.example.txt" "$repo/hosts.txt"
+    "${VISUAL:-${EDITOR:-nano}}" "$repo/hosts.txt"
+    "$repo/regen-certs.sh"
+    ;;
+  install) cmd_install "$@" ;;
+  help | -h | --help) usage ;;
+  *)
+    echo "Unknown command: $command" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

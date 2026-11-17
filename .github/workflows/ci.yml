@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: ShellCheck
-        run: shellcheck regen-certs.sh .githooks/pre-commit
+        run: shellcheck regen-certs.sh bin/local-proxy .githooks/pre-commit
 
       - name: Validate Compose file
         run: docker compose config --quiet
