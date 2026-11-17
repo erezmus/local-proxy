@@ -11,9 +11,9 @@ A shared [Traefik](https://doc.traefik.io/traefik/) reverse proxy for local deve
 | `dynamic.yml`        | Dynamic config: TLS certificates                                             |
 | `hosts.example.txt`  | Default hostnames; copied to `hosts.txt` on first run                        |
 | `hosts.txt`          | Hostnames the certificate covers, one per line (git-ignored)                 |
-| `docs/setup.sh`      | Creates missing setup resources and starts the proxy                         |
 | `regen-certs.sh`     | Regenerates `certs/` from `hosts.txt` and restarts Traefik                   |
 | `certs/`             | Generated certificate and key (mounted read-only at `/certs`)                |
+| `bin/local-proxy`    | CLI to start, stop, and manage the proxy from any directory                  |
 
 ## Network name
 
@@ -38,14 +38,34 @@ Prerequisites: Docker with the Compose plugin, `mkcert`, OpenSSL, and dnsmasq fo
 From the repository root, run:
 
 ```sh
-bash docs/setup.sh
+bin/local-proxy start
 ```
 
-The script uses Compose to resolve `PROXY_NETWORK` from the shell or `.env`, defaulting to `local-proxy`. It creates the network if needed, installs the mkcert CA and generates certificates if `certs/` is missing, then starts the proxy with `docker compose up -d`. It can be run again without recreating the network or certificates.
+This uses Compose to resolve `PROXY_NETWORK` from the shell or `.env`, defaulting to `local-proxy`. It creates the network if needed, installs the mkcert CA and generates certificates if `certs/` is missing, then starts the proxy with `docker compose up -d`. It can be run again without recreating the network or certificates.
 
-If `certs/` already exists, the script leaves it untouched and does not install the CA. Run `mkcert -install` separately if this machine still needs to trust the CA. If the directory is incomplete, run `./regen-certs.sh` to generate the certificate and key. To change hostnames or renew certificates, follow [Hostnames and certificates](#hostnames-and-certificates).
+If `certs/` already exists, it leaves the directory untouched and does not install the CA. Run `mkcert -install` separately if this machine still needs to trust the CA. If the directory is incomplete, run `bin/local-proxy certs` to generate the certificate and key. To change hostnames or renew certificates, follow [Hostnames and certificates](#hostnames-and-certificates).
 
-To change the network name later, set `PROXY_NETWORK` as above and rerun `bash docs/setup.sh`. Projects using the proxy must also be recreated so they join the new network.
+To change the network name later, set `PROXY_NETWORK` as above and rerun `bin/local-proxy start`. Projects using the proxy must also be recreated so they join the new network.
+
+## Command-line tool
+
+`bin/local-proxy` manages the proxy from any directory. Install it once by symlinking it into a directory on your `PATH`:
+
+```sh
+bin/local-proxy install          # links ~/.local/bin/local-proxy; pass a directory to use another
+```
+
+Because it's a symlink, pulling new changes into this repo updates the command too. The script follows the link back to this repo and runs Compose there.
+
+| Command                       | Does                                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| `local-proxy start`           | Creates the network and certificates if missing, then starts the proxy (see [Setup](#setup))    |
+| `local-proxy stop`            | Stops and removes the proxy containers                                                          |
+| `local-proxy restart`         | Stops, then starts                                                                              |
+| `local-proxy status`          | Shows container status                                                                          |
+| `local-proxy logs [-f]`       | Shows Traefik logs; extra arguments go to `docker compose logs`                                 |
+| `local-proxy certs [--check]` | Runs `regen-certs.sh`                                                                           |
+| `local-proxy hosts`           | Opens `hosts.txt` in `$VISUAL` or `$EDITOR` (default `nano`), then regenerates the certificates |
 
 ## Automated checks
 
@@ -58,7 +78,7 @@ Install the following tools:
 From the repository root, run each check independently:
 
 ```sh
-shellcheck regen-certs.sh docs/setup.sh
+shellcheck regen-certs.sh bin/local-proxy
 docker compose config --quiet
 gitleaks git --redact --log-opts=--all
 ```
@@ -77,7 +97,7 @@ To run these checks automatically before each commit, enable the included hook o
 git config core.hooksPath .githooks
 ```
 
-This makes Git read hooks from the tracked `.githooks/` directory instead of `.git/hooks`, so any existing hook in `.git/hooks` stops running; move its commands into `.githooks/pre-commit` if you use one. The hook checks that `.env` is ignored, runs ShellCheck on `regen-certs.sh` and runs Compose, and scans staged changes with gitleaks, blocking the commit on failure. Run the ShellCheck command above separately for `docs/setup.sh`. ShellCheck and Compose inspect the working-tree files, so keep those files consistent with what you stage. Committed history is not scanned by the hook; run the full-history gitleaks command above manually; CI runs it on every push. Enable the hook separately in each clone.
+This makes Git read hooks from the tracked `.githooks/` directory instead of `.git/hooks`, so any existing hook in `.git/hooks` stops running; move its commands into `.githooks/pre-commit` if you use one. The hook checks that `.env` is ignored, runs ShellCheck on the shell scripts and runs Compose, and scans staged changes with gitleaks, blocking the commit on failure. ShellCheck and Compose inspect the working-tree files, so keep those files consistent with what you stage. Committed history is not scanned by the hook; run the full-history gitleaks command above manually; CI runs it on every push. Enable the hook separately in each clone.
 
 ### Continuous integration
 
